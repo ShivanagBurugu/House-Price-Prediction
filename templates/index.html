@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>House Price Prediction</title>
-    <link rel="stylesheet" href="styles.css" />
     <style>
       * {
         margin: 0;
@@ -68,6 +67,55 @@
         font-size: 18px;
         text-align: center;
       }
+
+      #historyContainer {
+        margin-top: 20px;
+        position: relative;
+        display: none;
+      }
+
+      .history-item {
+        background-color: #fff;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        position: relative;
+      }
+
+      .close-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #e74c3c; /* Red background */
+        color: white; /* White text */
+        font-size: 18px;
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .close-btn:hover {
+        background: #c0392b; /* Darker red on hover */
+      }
+
+      .delete-btn {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        background: #007bff;
+        color: white;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -114,34 +162,171 @@
       </form>
 
       <p id="result"></p>
+
+      <!-- History Button -->
+      <button id="historyButton" style="margin-top: 20px">View History</button>
+
+      <!-- History Container -->
+      <div id="historyContainer">
+        <button class="close-btn">&times;</button>
+        <div id="historyContent"></div>
+      </div>
     </div>
 
     <script>
-      const form = document.getElementById("predictionForm");
-      form.addEventListener("submit", async function (event) {
-        event.preventDefault();
+      const historyContainer = document.getElementById("historyContainer");
+      const historyContent = document.getElementById("historyContent");
+      const closeButton = document.querySelector(".close-btn");
+      const historyButton = document.getElementById("historyButton");
 
-        const location = document.getElementById("location").value;
-        const sqft = document.getElementById("sqft").value;
-        const bath = document.getElementById("bath").value;
-        const bhk = document.getElementById("bhk").value;
+      // Fetch and update history items
+      async function updateHistory() {
+        try {
+          const response = await fetch("http://localhost:5000/data");
+          if (!response.ok) {
+            throw new Error("Failed to fetch history");
+          }
+          const data = await response.json();
 
-        const response = await fetch("http://127.0.0.1:5000/predict", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            location: location,
-            sqft: parseFloat(sqft),
-            bath: parseInt(bath),
-            bhk: parseInt(bhk),
-          }),
+          // Clear existing history
+          historyContent.innerHTML = "";
+
+          // Display new history data
+          if (data.length > 0) {
+            data.forEach((item) => {
+              const historyItem = document.createElement("div");
+              historyItem.className = "history-item";
+              historyItem.dataset.id = item.id;
+              historyItem.innerHTML = `
+                <p><strong>Location:</strong> ${item.location}</p>
+                <p><strong>Square Feet:</strong> ${item.sqft}</p>
+                <p><strong>Bathrooms:</strong> ${item.bath}</p>
+                <p><strong>BHK:</strong> ${item.bhk}</p>
+                <p><strong>Price(in Lakhs):</strong> ${item.price}</p>
+                <p><strong>Date & Time:</strong> ${new Date(
+                  item.timestamp
+                ).toLocaleString()}</p>
+                <button class="delete-btn" data-id="${item._id}">Delete</button>
+              `;
+              historyContent.appendChild(historyItem);
+            });
+
+            // Show the history container
+            historyContainer.style.display = "block";
+
+            // Attach event listeners to the dynamically created delete buttons
+            document.querySelectorAll(".delete-btn").forEach((button) => {
+              button.addEventListener("click", function (event) {
+                const id = event.target.getAttribute("data-id");
+                handleDelete(id);
+              });
+            });
+          } else {
+            // Hide the history container if no history
+            historyContainer.style.display = "none";
+          }
+        } catch (error) {
+          console.error("Error fetching history", error);
+        }
+      }
+
+      // Handle form submission for prediction
+      document
+        .getElementById("predictionForm")
+        .addEventListener("submit", async function (event) {
+          event.preventDefault();
+
+          const location = document.getElementById("location").value;
+          const sqft = document.getElementById("sqft").value;
+          const bath = document.getElementById("bath").value;
+          const bhk = document.getElementById("bhk").value;
+
+          try {
+            // Fetch prediction
+            const response = await fetch("http://127.0.0.1:5000/predict", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                location,
+                sqft: parseFloat(sqft),
+                bath: parseInt(bath),
+                bhk: parseInt(bhk),
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error("Failed to fetch prediction");
+            }
+
+            const data = await response.json();
+            document.getElementById("result").textContent =
+              "Predicted Price: " + data.prediction;
+
+            // Save to history
+            const historyResponse = await fetch(
+              "http://localhost:5000/history",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  location,
+                  sqft: parseFloat(sqft),
+                  bath: parseInt(bath),
+                  bhk: parseInt(bhk),
+                  price: parseFloat(data.prediction),
+                }),
+              }
+            );
+
+            if (!historyResponse.ok) {
+              throw new Error("Failed to save history");
+            }
+
+            alert("Details saved successfully!");
+          } catch (error) {
+            console.error("Error:", error);
+            alert("An error occurred: " + error.message);
+          }
         });
 
-        const data = await response.json();
-        document.getElementById("result").textContent =
-          "Predicted Price: ₹" + data.prediction;
+      // Handle delete functionality for each history item
+      async function handleDelete(id) {
+        try {
+          const response = await fetch(`http://localhost:5000/history/${id}`, {
+            method: "DELETE",
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to delete history: " + response.statusText);
+          }
+
+          // Remove the history item from the DOM
+          const historyItem = document.querySelector(
+            `.history-item[data-id="${id}"]`
+          );
+          if (historyItem) {
+            historyItem.remove();
+          }
+
+          alert("History item deleted successfully!");
+        } catch (error) {
+          console.error("Error deleting history:", error);
+          alert("An error occurred: " + error.message);
+        }
+      }
+
+      // Close the history container
+      closeButton.addEventListener("click", () => {
+        historyContainer.style.display = "none";
+      });
+
+      // Fetch history when the "View History" button is clicked
+      historyButton.addEventListener("click", () => {
+        updateHistory();
       });
     </script>
   </body>
